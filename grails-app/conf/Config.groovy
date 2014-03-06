@@ -130,7 +130,7 @@ grails.plugin.springsecurity.controllerAnnotations.staticRules = [
 ]
 
 def baseURL() {
-    grails.serverURL ?: "http://localhost:8080"
+    grails.serverURL ?: "http://localhost:8080/anon-user-bug"
 }
 
 oauth {

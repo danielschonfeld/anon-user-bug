@@ -19,6 +19,7 @@ import grails.plugin.springsecurity.oauth.OAuthToken
 import grails.plugin.springsecurity.userdetails.GormUserDetailsService
 import grails.plugin.springsecurity.userdetails.GrailsUser
 import grails.plugin.springsecurity.SpringSecurityUtils
+import org.apache.commons.lang.RandomStringUtils
 import org.springframework.security.core.authority.GrantedAuthorityImpl
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.savedrequest.DefaultSavedRequest
@@ -69,6 +70,36 @@ class SpringSecurityOAuthController {
         if (oAuthToken.principal instanceof GrailsUser) {
             authenticateAndRedirect(oAuthToken, defaultTargetUrl)
         } else {
+            //in my real world app, i limit the access to people only in our domain... for the test case, lets use gmail.com
+            if (oAuthToken.principal =~ /@gmail.com/) {
+                //Create a user if none exists which is what we're lead to believe
+                def config = SpringSecurityUtils.securityConfig
+
+                boolean created = User.withTransaction { status ->
+                    User user = new User(username: oAuthToken.principal, password: RandomStringUtils.random(9, true, true), enabled: true)
+                    user.addToOAuthIDs(provider: oAuthToken.providerName, accessToken: oAuthToken.socialId, user: user)
+
+                    if (!user.validate() || !user.save()) {
+                        status.setRollbackOnly()
+                        return false
+                    }
+
+                    UserRole.create user, Role.findOrCreateByAuthority("ROLE_ADMIN")
+
+                    oAuthToken = updateOAuthToken(oAuthToken, user)
+                    return true
+                }
+
+                if (created) {
+                    authenticateAndRedirect(oAuthToken, defaultTargetUrl)
+                    return
+                }
+            } else {
+                //Not Authorized at this time
+                redirect(controller: "login", action: "denied")
+            }
+
+            /*
             // This OAuth account hasn't been registered against an internal
             // account yet. Give the oAuthID the opportunity to create a new
             // internal account or link to an existing one.
@@ -79,6 +110,7 @@ class SpringSecurityOAuthController {
                     " configuration option must be set!"
             log.debug "Redirecting to askToLinkOrCreateAccountUri: ${redirectUrl}"
             redirect(redirectUrl instanceof Map ? redirectUrl : [uri: redirectUrl])
+            */
         }
     }
 
